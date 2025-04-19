@@ -4,33 +4,65 @@ import pygame
 class Game:
     def __init__(self):
         pygame.init()
-        pygame.display.set_caption("Deneme")
+        pygame.display.set_caption("Sonsuz Platform")
         self.screen = pygame.display.set_mode((800, 600))
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont(None, 50)
 
-        # Oyuncu özellikleri
         self.player_color = (255, 0, 0)
-        self.player_pos = [400, 500]
         self.player_size = 50
+        self.player_pos = [400, 300]
         self.speed = 5
 
-        # Zıplama değişkenleri
         self.is_jumping = False
         self.jump_velocity = -15
         self.gravity = 1
         self.vertical_velocity = 0
-        self.ground_level = self.player_pos[1]
 
-        # Engeller
+        self.camera_x = 0  # ekran kaydırma
+
+        # Başlangıç engelleri + zemin
         self.obstacles = [
-            pygame.Rect(300, 550, 100, 20),
-            pygame.Rect(500, 520, 120, 20),
-            pygame.Rect(150, 480, 100, 20)
+            pygame.Rect(300, 400, 100, 20),
+            pygame.Rect(700, 350, 100, 20),
+            pygame.Rect(1100, 300, 120, 20),
+            pygame.Rect(0, 580, 2000, 20)  # Zemin
         ]
 
         self.state = "menu"
         self.selected_option = 0
+
+    def check_vertical_collisions(self):
+        player_rect = pygame.Rect(self.player_pos[0] + self.camera_x, self.player_pos[1],
+                                  self.player_size, self.player_size)
+
+        on_ground = False
+
+        for obstacle in self.obstacles:
+            if player_rect.colliderect(obstacle):
+                if self.vertical_velocity > 0:  # aşağı düşüyorsa
+                    self.player_pos[1] = obstacle.y - self.player_size
+                    self.vertical_velocity = 0
+                    on_ground = True
+                elif self.vertical_velocity < 0:  # yukarı çarpıyorsa
+                    self.player_pos[1] = obstacle.y + obstacle.height
+                    self.vertical_velocity = 0
+
+        return on_ground
+
+    def handle_horizontal_collision(self, dx):
+        player_rect = pygame.Rect(self.player_pos[0] + self.camera_x + dx, self.player_pos[1],
+                                  self.player_size, self.player_size)
+
+        for obstacle in self.obstacles:
+            if player_rect.colliderect(obstacle):
+                if dx > 0:
+                    self.camera_x = obstacle.left - self.player_pos[0] - self.player_size
+                elif dx < 0:
+                    self.camera_x = obstacle.right - self.player_pos[0]
+                return
+
+        self.camera_x += dx
 
     def draw_menu(self):
         self.screen.fill((20, 20, 20))
@@ -45,28 +77,38 @@ class Game:
     def run_game(self):
         keys = pygame.key.get_pressed()
         if keys[pygame.K_LEFT]:
-            self.player_pos[0] -= self.speed
+            self.handle_horizontal_collision(-self.speed)
         if keys[pygame.K_RIGHT]:
-            self.player_pos[0] += self.speed
+            self.handle_horizontal_collision(self.speed)
 
-        # Zıplama fiziği
-        if self.is_jumping:
-            self.player_pos[1] += self.vertical_velocity
-            self.vertical_velocity += self.gravity
+        # ✅ Zıplama her karede kontrol edilir (gecikme yok)
+        if (keys[pygame.K_SPACE] or keys[pygame.K_UP]) and not self.is_jumping:
+            self.is_jumping = True
+            self.vertical_velocity = self.jump_velocity
 
-            if self.player_pos[1] >= self.ground_level:
-                self.player_pos[1] = self.ground_level
-                self.is_jumping = False
-                self.vertical_velocity = 0
+        # Zıplama ve düşme fiziği
+        self.player_pos[1] += self.vertical_velocity
+        self.vertical_velocity += self.gravity
 
+        on_ground = self.check_vertical_collisions()
+        self.is_jumping = not on_ground
+
+        if self.player_pos[1] > 600:
+            print("Game Over! Aşağıya düştün.")
+            self.state = "menu"
+
+        # Ekranı temizle
         self.screen.fill((30, 30, 30))
 
-        # Engelleri çiz
+        # Engelleri çiz (kamera offset'ine göre kaydır)
         for obstacle in self.obstacles:
-            pygame.draw.rect(self.screen, (0, 255, 0), obstacle)
+            draw_rect = pygame.Rect(obstacle.x - self.camera_x, obstacle.y,
+                                    obstacle.width, obstacle.height)
+            pygame.draw.rect(self.screen, (0, 255, 0), draw_rect)
 
-        # Oyuncuyu çiz
-        player_rect = pygame.Rect(self.player_pos[0], self.player_pos[1], self.player_size, self.player_size)
+        # Oyuncuyu çiz (ekranda sabit)
+        player_rect = pygame.Rect(self.player_pos[0], self.player_pos[1],
+                                  self.player_size, self.player_size)
         pygame.draw.rect(self.screen, self.player_color, player_rect)
 
     def run(self):
@@ -85,17 +127,13 @@ class Game:
                         elif event.key == pygame.K_RETURN:
                             if self.selected_option == 0:
                                 self.state = "playing"
+                                self.player_pos = [400, 300]
+                                self.is_jumping = False
+                                self.vertical_velocity = 0
+                                self.camera_x = 0
                             elif self.selected_option == 1:
                                 pygame.quit()
                                 sys.exit()
-                elif self.state == "playing":
-                    if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_ESCAPE:
-                            self.state = "menu"
-                        elif event.key == pygame.K_SPACE:
-                            if not self.is_jumping:
-                                self.is_jumping = True
-                                self.vertical_velocity = self.jump_velocity
 
             if self.state == "menu":
                 self.draw_menu()
